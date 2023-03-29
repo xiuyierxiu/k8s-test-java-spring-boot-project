@@ -129,7 +129,6 @@ spec:
 
       }
     }
-    }
 
     stage('Building') {
       parallel {
@@ -172,7 +171,6 @@ spec:
 		}
 
       }
-    }
 
     stage('Deploying to K8s') {
       environment {
@@ -200,3 +198,4 @@ spec:
 		gitParameter(branch: '', branchFilter: 'origin/(.*)', defaultValue: '', description: 'Branch for build and deploy', name: 'BRANCH', quickFilterEnabled: false, selectedValue: 'NONE', sortMode: 'NONE', tagFilter: '*', type: 'PT_BRANCH')
 	}
 }
+
