@@ -1,8 +1,9 @@
 pipeline {
   agent {
     kubernetes {
-      cloud 'kubernetes-default'
+      cloud 'study-kubernetes'
       slaveConnectTimeout 1200
+	  workspaceVolume hostPathWorkspaceVolume(hostPath: "/opt/workspace", readOnly: false) 
       yaml '''
 apiVersion: v1
 kind: Pod
@@ -14,11 +15,8 @@ spec:
       imagePullPolicy: IfNotPresent
       volumeMounts:
         - mountPath: "/etc/localtime"
-          name: "volume-2"
-          readOnly: false
-        - mountPath: "/etc/hosts"
-          name: "volume-hosts"
-          readOnly: false        
+          name: "localtime"
+          readOnly: false  
     - command:
         - "cat"
       env:
@@ -34,39 +32,10 @@ spec:
       tty: true
       volumeMounts:
         - mountPath: "/etc/localtime"
-          name: "volume-2"
+          name: "localtime"
           readOnly: false
         - mountPath: "/root/.m2/"
-          name: "volume-maven-repo"
-          readOnly: false
-        - mountPath: "/etc/hosts"
-          name: "volume-hosts"
-          readOnly: false
-    - command:
-        - "cat"
-      env:
-        - name: "LANGUAGE"
-          value: "en_US:en"
-        - name: "LC_ALL"
-          value: "en_US.UTF-8"
-        - name: "LANG"
-          value: "en_US.UTF-8"
-      image: "xiuyierxiu/kubectl:1.20.5-debian-10-r22"
-      imagePullPolicy: "IfNotPresent"
-      name: "kubectl"
-      tty: true
-      volumeMounts:
-        - mountPath: "/etc/localtime"
-          name: "volume-2"
-          readOnly: false
-        - mountPath: "/var/run/docker.sock"
-          name: "volume-docker"
-          readOnly: false
-        - mountPath: "/mnt/.kube/"
-          name: "volume-kubeconfig"
-          readOnly: false
-        - mountPath: "/etc/hosts"
-          name: "volume-hosts"
+          name: "cachedir"
           readOnly: false
     - command:
         - "cat"
@@ -83,14 +52,28 @@ spec:
       tty: true
       volumeMounts:
         - mountPath: "/etc/localtime"
-          name: "volume-2"
+          name: "localtime"
           readOnly: false
         - mountPath: "/var/run/docker.sock"
-          name: "volume-docker"
+          name: "dockersock"
           readOnly: false
-        - mountPath: "/etc/hosts"
-          name: "volume-hosts"
+      image: "xiuyierxiu/kubectl:1.20.5-debian-10-r22"
+      imagePullPolicy: "IfNotPresent"
+      name: "kubectl"
+      tty: true
+      volumeMounts:
+        - mountPath: "/etc/localtime"
+          name: "localtime"
           readOnly: false
+    - command:
+        - "cat"
+      env:
+        - name: "LANGUAGE"
+          value: "en_US:en"
+        - name: "LC_ALL"
+          value: "en_US.UTF-8"
+        - name: "LANG"
+          value: "en_US.UTF-8"
   restartPolicy: "Never"
   nodeSelector:
     build: "true"
@@ -98,34 +81,33 @@ spec:
   volumes:
     - hostPath:
         path: "/var/run/docker.sock"
-      name: "volume-docker"
+      name: "dockersock"
     - hostPath:
         path: "/usr/share/zoneinfo/Asia/Shanghai"
-      name: "volume-2"
-    - hostPath:
-        path: "/etc/hosts"
-      name: "volume-hosts"
-    - name: "volume-maven-repo"
+      name: "localtime"
+    - name: "cachedir"
       hostPath:
         path: "/opt/m2"
-    - name: "volume-kubeconfig"
-      secret:
-        secretName: "multi-kube-config"
 '''	
-}
+	}
 }
 
   stages {
     stage('pulling Code') {
       parallel {
-        stage('pulling Code') {
+        stage('pulling Code by jenkins') {
           when {
             expression {
               env.gitlabBranch == null
             }
           }
           steps {
-            git(branch: "${BRANCH}", credentialsId: '501d7004-1b5a-4402-996d-9940e0c050b7', url: "${REPO_URL}")
+            git(changelog: true, url: 'git@github.com:xiuyierxiu/k8s-test-java-spring-boot-project.git', branch: "${BRANCH}", credentialsId: 'git-key')
+			script {
+				COMMIT_ID = sh(returnStdout: true, script: "git log -n 1 --pretty=format:'%h'").trim()
+				TAG = BUILD_TAG + '-' + COMMIT_ID
+				println "Current branch is ${BRANCH}, Commit ID is ${COMMIT_ID}, Image TAG is ${TAG}"
+			}
           }
         }
 
@@ -136,23 +118,17 @@ spec:
             }
           }
           steps {
-            git(url: "${REPO_URL}", branch: env.gitlabBranch, credentialsId: '501d7004-1b5a-4402-996d-9940e0c050b7')
+            git(url: 'git@github.com:xiuyierxiu/k8s-test-java-spring-boot-project.git', branch: env.gitlabBranch, changelog: true, poll: true, credentialsId: 'gitlab-key')
+			script {
+				COMMIT_ID = sh(returnStdout: true, script: "git log -n 1 --pretty=format:'%h'").trim()
+				TAG = BUILD_TAG + '-' + COMMIT_ID
+				println "Current branch is ${BRANCH}, Commit ID is ${COMMIT_ID}, Image TAG is ${TAG}"
+			}
           }
         }
 
       }
     }
-
-    stage('initConfiguration') {
-      steps {
-        script {
-          CommitID = sh(returnStdout: true, script: "git log -n 1 --pretty=format:'%h'").trim()
-          CommitMessage = sh(returnStdout: true, script: "git log -1 --pretty=format:'%h : %an  %s'").trim()
-          def curDate = sh(script: "date '+%Y%m%d-%H%M%S'", returnStdout: true).trim()
-          TAG = curDate[0..14] + "-" + CommitID + "-" + BRANCH
-        }
-
-      }
     }
 
     stage('Building') {
@@ -161,9 +137,10 @@ spec:
           steps {
             container(name: 'build') {
             sh """
-            echo "Building Project..."
-            ${BUILD_COMMAND}
-          """
+				curl repo.maven.apache.org 
+				mvn clean install -DskipTests 
+				ls target/*
+			"""
             }
 
           }
@@ -178,45 +155,48 @@ spec:
       }
     }
 
-    stage('Build image') {
-      steps {
-                withCredentials([usernamePassword(credentialsId: 'REGISTRY_USER', passwordVariable: 'Password', usernameVariable: 'Username')]) {
-        container(name: 'docker') {
-          sh """
-          docker build -t ${HARBOR_ADDRESS}/${REGISTRY_DIR}/${IMAGE_NAME}:${TAG} .
-          docker login -u ${Username} -p ${Password} ${HARBOR_ADDRESS}
-          docker push ${HARBOR_ADDRESS}/${REGISTRY_DIR}/${IMAGE_NAME}:${TAG}
-          """
-        }
-        }
+    stage('Docker build for creating image') {
+	   environment {
+	   	HARBOR_USER	= credentials('HARBOR_USERNAME_TX')
+	   }
+	   
+		steps {
+			container(name: 'docker') { 
+				sh """
+				echo ${HARBOR_USER_USR} ${HARBOR_USER_PSW} ${TAG}
+				docker build -t ${HARBOR_ADDRESS}/${REGISTRY_DIR}/${IMAGE_NAME}:${TAG} . 
+				docker login -u	${HARBOR_USER_USR}	-p	${HARBOR_USER_PSW} ${HARBOR_ADDRESS}
+				docker push ${HARBOR_ADDRESS}/${REGISTRY_DIR}/${IMAGE_NAME}:${TAG} 
+				"""
+			}
+		}
 
       }
     }
 
-    stage('Deploy') {
-    when {
-            expression {
-              DEPLOY != "false"
-            }
-          }
-    
-      steps {
-      container(name: 'kubectl') {
-        sh """
-        cat ${KUBECONFIG_PATH} > /tmp/1.yaml
-  /usr/local/bin/kubectl config use-context ${CLUSTER} --kubeconfig=/tmp/1.yaml
-  export KUBECONFIG=/tmp/1.yaml
-  /usr/local/bin/kubectl set image ${DEPLOY_TYPE} -l ${DEPLOY_LABEL} ${CONTAINER_NAME}=${HARBOR_ADDRESS}/${REGISTRY_DIR}/${IMAGE_NAME}:${TAG} -n ${NAMESPACE}
-"""
-        }
-
+    stage('Deploying to K8s') {
+      environment {
+      	MY_KUBECONFIG = credentials('study-k8s-kubeconfig')
       }
+		steps {
+			container(name: 'kubectl'){ 
+				sh """
+				/usr/local/bin/kubectl --kubeconfig	$MY_KUBECONFIG	set	image deploy -l app=${IMAGE_NAME} ${IMAGE_NAME}=${HARBOR_ADDRESS}/${REGISTRY_DIR}/${IMAGE_NAME}:${TAG} -n $NAMESPACE
+				"""
+			}
+		}
     }
 
-  }
-  environment {
-    CommitID = ''
-    CommitMessage = ''
-    TAG = ''
-  }
+	environment {
+		CommitID = ''
+		HARBOR_ADDRESS = "43.139.169.26"
+		REGISTRY_DIR = "kubernetes" 
+		IMAGE_NAME = "k8s-test-java-spring-boot-project" 
+		NAMESPACE = "kubernetes"
+		TAG = ""
+	}
+
+	parameters {
+		gitParameter(branch: '', branchFilter: 'origin/(.*)', defaultValue: '', description: 'Branch for build and deploy', name: 'BRANCH', quickFilterEnabled: false, selectedValue: 'NONE', sortMode: 'NONE', tagFilter: '*', type: 'PT_BRANCH')
+	}
 }
