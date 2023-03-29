@@ -57,7 +57,7 @@ spec:
         - mountPath: "/var/run/docker.sock"
           name: "dockersock"
           readOnly: false
-      image: "xiuyierxiu/kubectl:1.20.5-debian-10-r22"
+      image: "registry.cn-beijing.aliyuncs.com/citools/kubectl:self-1.17"
       imagePullPolicy: "IfNotPresent"
       name: "kubectl"
       tty: true
