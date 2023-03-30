@@ -102,7 +102,7 @@ spec:
             }
           }
           steps {
-            git(changelog: true, url: 'git@github.com:xiuyierxiu/k8s-test-java-spring-boot-project.git', branch: "${BRANCH}", credentialsId: 'git-key')
+            git(changelog: true, poll: true, url: 'git@github.com:xiuyierxiu/k8s-test-java-spring-boot-project.git', branch: "${BRANCH}", credentialsId: 'git-key')
 			script {
 				COMMIT_ID = sh(returnStdout: true, script: "git log -n 1 --pretty=format:'%h'").trim()
 				TAG = BUILD_TAG + '-' + COMMIT_ID
@@ -118,7 +118,7 @@ spec:
             }
           }
           steps {
-            git(url: 'git@github.com:xiuyierxiu/k8s-test-java-spring-boot-project.git', branch: env.gitlabBranch, changelog: true, poll: true, credentialsId: 'gitlab-key')
+            git(url: 'git@github.com:xiuyierxiu/k8s-test-java-spring-boot-project.git', branch: env.gitBranch, changelog: true, poll: true, credentialsId: 'gitlab-key')
 			script {
 				COMMIT_ID = sh(returnStdout: true, script: "git log -n 1 --pretty=format:'%h'").trim()
 				TAG = BUILD_TAG + '-' + COMMIT_ID
@@ -184,7 +184,7 @@ spec:
 			}
 		}
     }
-
+}
 	environment {
 		CommitID = ''
 		HARBOR_ADDRESS = "43.139.169.26"
@@ -197,5 +197,4 @@ spec:
 	parameters {
 		gitParameter(branch: '', branchFilter: 'origin/(.*)', defaultValue: '', description: 'Branch for build and deploy', name: 'BRANCH', quickFilterEnabled: false, selectedValue: 'NONE', sortMode: 'NONE', tagFilter: '*', type: 'PT_BRANCH')
 	}
-}
 }
