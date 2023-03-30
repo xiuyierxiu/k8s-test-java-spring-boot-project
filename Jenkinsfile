@@ -186,7 +186,7 @@ spec:
     }
 }
 	environment {
-		CommitID = ''
+		COMMIT_ID = ''
 		HARBOR_ADDRESS = "43.139.169.26"
 		REGISTRY_DIR = "kubernetes" 
 		IMAGE_NAME = "k8s-test-java-spring-boot-project" 
